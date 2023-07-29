@@ -1,0 +1,61 @@
+import neo
+import pandas as pd
+import numpy as np
+
+# Replace 'your_file.smr' with the path to your actual .smr file
+file_path = 'your_file.smr'
+
+# Load the .smr file using neo with try_signal_grouping=False
+reader = neo.io.Spike2IO(filename=file_path, try_signal_grouping=False)
+
+# Read the data from the file
+block = reader.read_block()
+
+# List to store amplitude data for each channel
+amplitudes_data = []
+
+# List to store average frequency data for each channel
+avg_freq_data = []
+
+# Get the time axis (assuming it's the same for all channels)
+time_axis = block.segments[0].analogsignals[0].times
+
+# Loop through all analog signals (channels) in the file
+for analog_signal in block.segments[0].analogsignals:
+    # Get the data (amplitude) for the current channel
+    data = analog_signal.magnitude
+
+    # Calculate the peak-to-peak amplitude of each waveform
+    waveforms = [data[i:i + len(time_axis)] for i in range(0, len(data), len(time_axis))]
+
+    # Calculate the average waveform for the channel
+    average_waveform = np.mean(waveforms, axis=0)
+
+    # Calculate the amplitude as the difference between the maximum and minimum voltage of the average waveform
+    amplitude = np.max(average_waveform) - np.min(average_waveform)
+
+    # Calculate the average frequency for the current channel
+    fft_result = np.fft.fft(average_waveform)
+    frequencies_signal = np.fft.fftfreq(len(fft_result), d=(1.0 / analog_signal.sampling_rate))
+    positive_frequencies = frequencies_signal[:len(frequencies_signal) // 2]
+    power_spectrum = np.abs(fft_result[:len(fft_result) // 2])
+    avg_frequency = np.sum(positive_frequencies * power_spectrum) / np.sum(power_spectrum)
+
+    # Append the amplitude and average frequency to the respective lists
+    amplitudes_data.append(amplitude)
+    avg_freq_data.append(avg_frequency)
+
+# Create DataFrames from the amplitudes_data and avg_freq_data lists
+amplitude_df = pd.DataFrame(amplitudes_data, columns=["Amplitude"])
+avg_frequency_df = pd.DataFrame(avg_freq_data, columns=["Average Frequency"])
+
+# Export DataFrames to separate Excel files
+amplitude_df.to_excel("amplitude_data.xlsx", index=False)
+avg_frequency_df.to_excel("average_frequency_data.xlsx", index=False)
+
+# Print the DataFrames (optional)
+print("Amplitude Data:")
+print(amplitude_df)
+
+print("\nAverage Frequency Data:")
+print(avg_frequency_df)
