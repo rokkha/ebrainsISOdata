@@ -1,0 +1,48 @@
+pip install neo
+
+import neo
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Replace 'your_file.smr' with the path to your actual .smr file
+file_path = 'your_file.smr'
+
+# Load the .smr file using neo with try_signal_grouping=False
+reader = neo.io.Spike2IO(filename=file_path, try_signal_grouping=False)
+block = reader.read_block()
+
+# Assuming you have a single analog signal (waveform) in the .smr file
+analog_signal = block.segments[0].analogsignals[0]
+
+# Define the window size in seconds
+window_size = 3
+
+# Calculate the number of samples per window
+samples_per_window = int(window_size * analog_signal.sampling_rate)
+
+# Calculate the number of windows
+num_windows = int(len(analog_signal) / samples_per_window)
+
+# Loop through each window and plot the waveform
+for window_index in range(num_windows):
+    # Calculate the start and end indices for the current window
+    start_index = window_index * samples_per_window
+    end_index = (window_index + 1) * samples_per_window
+
+    # Get the data (amplitude) for the current window and channel
+    window_data = analog_signal[start_index:end_index]
+
+    # Convert window_data to a numpy array to plot
+    window_data_np = np.array(window_data)
+
+    # Create a time array for the window (in seconds)
+    time_window = np.arange(start_index, end_index) / analog_signal.sampling_rate
+
+    # Plot the waveform
+    plt.figure(figsize=(10, 4))
+    plt.plot(time_window, window_data_np, linewidth=1)
+    plt.xlabel('Time (s)')
+    plt.ylabel('Amplitude')
+    plt.title(f'Waveform in Window {window_index + 1}')
+    plt.grid(True)
+    plt.show()
