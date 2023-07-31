@@ -1,61 +1,62 @@
+pip install neo
+
 import neo
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 # Replace 'your_file.smr' with the path to your actual .smr file
 file_path = 'your_file.smr'
 
 # Load the .smr file using neo with try_signal_grouping=False
 reader = neo.io.Spike2IO(filename=file_path, try_signal_grouping=False)
-
-# Read the data from the file
 block = reader.read_block()
 
-# List to store amplitude data for each channel
-amplitudes_data = []
+# List to store DataFrames for each channel's peak-to-peak amplitude
+dfs_per_channel = []
 
-# List to store average frequency data for each channel
-avg_freq_data = []
+# Define the window size in seconds
+window_size = 3
 
-# Get the time axis (assuming it's the same for all channels)
-time_axis = block.segments[0].analogsignals[0].times
+# Calculate the number of samples per window
+samples_per_window = int(window_size * block.segments[0].analogsignals[0].sampling_rate)
 
-# Loop through all analog signals (channels) in the file
-for analog_signal in block.segments[0].analogsignals:
-    # Get the data (amplitude) for the current channel
-    data = analog_signal.magnitude
+# Loop through each channel
+for channel_index in range(32):  # Assuming 32 channels
+    # Get the analog signal (waveform) for the current channel
+    analog_signal = block.segments[0].analogsignals[channel_index]
 
-    # Calculate the peak-to-peak amplitude of each waveform
-    waveforms = [data[i:i + len(time_axis)] for i in range(0, len(data), len(time_axis))]
+    # Calculate the number of windows for the current channel
+    num_windows = int(len(analog_signal) / samples_per_window)
 
-    # Calculate the average waveform for the channel
-    average_waveform = np.mean(waveforms, axis=0)
+    # Initialize lists to store peak-to-peak amplitudes and window start times for the current channel
+    peak_to_peak_amplitudes = []
+    window_start_times = []
 
-    # Calculate the amplitude as the difference between the maximum and minimum voltage of the average waveform
-    amplitude = np.max(average_waveform) - np.min(average_waveform)
+    # Loop through each window and calculate peak-to-peak amplitude for the current channel
+    for window_index in range(num_windows):
+        # Calculate the start and end indices for the current window
+        start_index = window_index * samples_per_window
+        end_index = (window_index + 1) * samples_per_window
 
-    # Calculate the average frequency for the current channel
-    fft_result = np.fft.fft(average_waveform)
-    frequencies_signal = np.fft.fftfreq(len(fft_result), d=(1.0 / analog_signal.sampling_rate))
-    positive_frequencies = frequencies_signal[:len(frequencies_signal) // 2]
-    power_spectrum = np.abs(fft_result[:len(fft_result) // 2])
-    avg_frequency = np.sum(positive_frequencies * power_spectrum) / np.sum(power_spectrum)
+        # Get the data (amplitude) for the current window and channel
+        window_data = analog_signal[start_index:end_index]
 
-    # Append the amplitude and average frequency to the respective lists
-    amplitudes_data.append(amplitude)
-    avg_freq_data.append(avg_frequency)
+        # Calculate the peak-to-peak amplitude for the current window and channel
+        peak_to_peak_amplitude = np.max(window_data) - np.min(window_data)
 
-# Create DataFrames from the amplitudes_data and avg_freq_data lists
-amplitude_df = pd.DataFrame(amplitudes_data, columns=["Amplitude"])
-avg_frequency_df = pd.DataFrame(avg_freq_data, columns=["Average Frequency"])
+        # Store the peak-to-peak amplitude and window start time in the lists
+        peak_to_peak_amplitudes.append(peak_to_peak_amplitude.magnitude)  # Exclude units
+        window_start_time = start_index / analog_signal.sampling_rate
+        window_start_times.append(window_start_time)
 
-# Export DataFrames to separate Excel files
-amplitude_df.to_excel("amplitude_data.xlsx", index=False)
-avg_frequency_df.to_excel("average_frequency_data.xlsx", index=False)
+    # Create a DataFrame for the current channel's data (without units)
+    data = {'Window Start Time (s)': window_start_times, f'Peak-to-Peak Amplitude (Channel {channel_index + 1})': peak_to_peak_amplitudes}
+    df_channel = pd.DataFrame(data)
 
-# Print the DataFrames (optional)
-print("Amplitude Data:")
-print(amplitude_df)
+    # Append the DataFrame to the list for each channel
+    dfs_per_channel.append(df_channel)
 
-print("\nAverage Frequency Data:")
-print(avg_frequency_df)
+# Export each channel's DataFrame to a separate sheet in the Excel file (without units)
+with pd.ExcelWriter('peak_to_peak_amplitudes_per_channel.xlsx') as writer:
+    for channel_index, df_channel in enumerate(dfs_per_channel):
+        df_channel.to_excel(writer, sheet_name=f'Channel_{channel_index + 1}', index=False)
